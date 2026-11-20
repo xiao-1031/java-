@@ -1,0 +1,52 @@
+@startuml
+title 随机脚本差分测试——对象协作时序图
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Microsoft YaHei"
+skinparam sequenceArrowThickness 1
+autonumber
+
+actor 学生 as user
+participant "AutoTestPanel" as ui
+participant "TestSuiteFactory" as factory
+participant "TemporalInputGenerator" as generator
+participant "CircuitReference" as reference
+participant "DifferentialTestRunner" as differential
+participant "TestRunner\n(reference)" as refRunner
+participant "TestRunner\n(DUT)" as dutRunner
+
+user -> ui : 设置观测点、tick、种子并选择参考电路
+ui -> factory : automatic(signals, maxCases, ticks, reset, seed)
+factory -> generator : generate(inputs, ...)
+generator --> factory : 确定性的连续 TestVector 序列
+factory --> ui : 不可变 TestSuite
+ui -> reference : open(file, requiredSignals)
+reference -> reference : 扫描 Pin 并校验名称、方向、位宽
+reference --> ui : 已校验的参考执行器
+ui -> differential : 构造(dutRunner, reference)
+ui -> differential : run(suite, progressListener)
+
+differential -> reference : execute(suite)
+reference -> reference : 用本地 TestSignal 重建 localSuite
+reference -> refRunner : execute(localSuite)
+refRunner --> reference : referenceReport
+reference --> differential : referenceReport
+
+differential -> dutRunner : execute(suite)
+dutRunner --> differential : actualReport
+
+loop 每个观测点
+  differential -> differential : compare(actual, reference)
+  alt 输出分歧
+    differential --> ui : FAILED + 参考值 + 实际值
+  else 输出一致但 DUT 有时序异常
+    differential --> ui : ANOMALY + 异常证据
+  else 全部一致
+    differential --> ui : CLEAN + 本点参考输出
+  end
+end
+
+differential --> ui : TestReport
+ui -> reference : close()（finally）
+ui --> user : 显示首个分歧与完整报告
+@enduml

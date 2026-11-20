@@ -1,0 +1,104 @@
+@startuml
+!pragma layout smetana
+title Logisim 学习插件——总体架构类图
+top to bottom direction
+skinparam monochrome true
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+skinparam defaultFontName "Microsoft YaHei"
+skinparam linetype ortho
+hide circle
+
+class LearnerMain {
+ +main(args: String[]): void
+}
+class PluginController {
+ -instance: PluginController
+ -sessions: Map<Project, ProjectSession>
+ +install(): void
+ -synchronizeSessions(): void
+}
+class ProjectSession {
+ -project: Project
+ -waveformModel: WaveformModel
+ -debugController: DebugController
+ -debugFrame: LearnerDebugFrame
+ +dispose(): void
+}
+class LearnerDebugFrame {
+ -waveformPanel: WaveformPanel
+ -autoTestPanel: AutoTestPanel
+ -healthPanel: DiagnosticsPanel
+ -riskPanel: DiagnosticsPanel
+}
+class AutoTestPanel {
+ -suite: TestSuite
+ -report: TestReport
+ -worker: TestWorker
+ -startAutomatic(): void
+ -startDifferential(): void
+ -exportScript(): void
+ -replaySelected(): void
+}
+class WaveformPanel
+class DiagnosticsPanel
+class DebugController {
+ -currentState: CircuitState
+ -availableSignals: List<SignalDescriptor>
+ +start(): void
+ +pause(): void
+ +step(): void
+ +tickOnce(): void
+ +rescanSignals(): void
+ +dispose(): void
+}
+class WaveformModel {
+ -histories: Map<SignalDescriptor, List<SignalSample>>
+ +capture(state: CircuitState, force: boolean): boolean
+ +snapshot(): Snapshot
+ +clearSamples(): void
+}
+interface CircuitAnalyzer {
+ +analyze(state: CircuitState): List<Diagnostic>
+}
+class ConnectivityAnalyzer
+class RaceAnalyzer
+interface ScriptExecutor {
+ +execute(suite: TestSuite): TestReport
+}
+class TestRunner
+class CircuitReference
+class DifferentialTestRunner
+class TestSuiteFactory
+class TestReplayService
+class CsvTestVectorLoader
+class CsvTestVectorWriter
+
+LearnerMain ..> PluginController : install
+PluginController *-- "0..*" ProjectSession : sessions
+ProjectSession *-- "1" DebugController
+ProjectSession *-- "1" WaveformModel
+ProjectSession *-- "0..1" LearnerDebugFrame : debugFrame
+LearnerDebugFrame *-- "1" AutoTestPanel
+LearnerDebugFrame *-- "1" WaveformPanel
+LearnerDebugFrame *-- "2" DiagnosticsPanel : health / risk
+DiagnosticsPanel ..> CircuitAnalyzer
+CircuitAnalyzer <|.. ConnectivityAnalyzer
+CircuitAnalyzer <|.. RaceAnalyzer
+
+ScriptExecutor <|.. TestRunner
+ScriptExecutor <|.. CircuitReference
+ScriptExecutor <|.. DifferentialTestRunner
+DifferentialTestRunner --> "2" ScriptExecutor : DUT / reference
+AutoTestPanel ..> TestSuiteFactory : 创建随机脚本
+AutoTestPanel ..> CircuitReference : 打开并校验参考电路
+AutoTestPanel ..> TestRunner : 单模型执行
+AutoTestPanel ..> DifferentialTestRunner : 对拍执行
+AutoTestPanel ..> CsvTestVectorLoader : 导入脚本
+AutoTestPanel ..> CsvTestVectorWriter : 导出脚本
+AutoTestPanel ..> TestReplayService : 失败复现
+TestReplayService --> DebugController
+TestReplayService --> WaveformModel
+WaveformPanel --> DebugController
+WaveformPanel --> WaveformModel
+@enduml

@@ -1,0 +1,90 @@
+@startuml
+!pragma layout smetana
+title 时序执行、异常观测与失败复现——设计类图
+top to bottom direction
+skinparam monochrome true
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+skinparam defaultFontName "Microsoft YaHei"
+skinparam linetype ortho
+hide circle
+
+class TestRunner
+class SimulationDriver {
+ -state: CircuitState
+ -tick: long
+ +reset(): void
+ +applyInputs(signals, values, listener): void
+ +tick(count: int, listener: StepListener): void
+ +readOutputs(signals: List): Map<String, Value>
+ -advance(listener: StepListener): void
+}
+interface "SimulationDriver.StepListener" as StepListener {
+ +afterStep(tick: long, propagationStep: int): void
+}
+class LearnerTimingAccess {
+ +reset(state: CircuitState): void
+ +step(state: CircuitState): void
+ +hasPendingSteps(state: CircuitState): boolean
+}
+class CircuitState
+class Propagator
+class TimingMonitor {
+ -state: CircuitState
+ -outputs: List<TestSignal>
+ -histories: Map<SignalDescriptor, List<SignalSample>>
+ -anomalies: List<String>
+ -anomalySignal: SignalDescriptor
+ +afterStep(tick: long, propagationStep: int): void
+ +hasAnomalies(): boolean
+ +getReason(): String
+ -capture(tick, step, force): void
+ -checkPulse(signal, history, tick, step): void
+}
+class SignalDescriptor {
+ -component: Component
+ -option: Object
+ -loggable: Loggable
+ -instancePath: List<Component>
+ -name: String
+ +scan(state: CircuitState): List<SignalDescriptor>
+ +readValue(state: CircuitState): Value
+}
+class SignalSample {
+ -sequence: long
+ -tick: long
+ -value: Value
+}
+class WaveformAnomalyDetector {
+ +isShortPulse(history, middleIndex): boolean
+}
+class TestReplayService {
+ -controller: DebugController
+ -waveformModel: WaveformModel
+ +replay(result: TestResult, suite: TestSuite): Component
+}
+class DebugController
+class WaveformModel
+class TestResult
+
+TestRunner ..> SimulationDriver : 每个脚本共享一条状态时间线
+TestRunner ..> TimingMonitor : 每个观测点创建监视器
+SimulationDriver ..> LearnerTimingAccess : 隔离 Logisim 包内 API
+LearnerTimingAccess ..> Propagator : reset / step / isPending
+SimulationDriver --> CircuitState : state
+StepListener <|.. TimingMonitor
+SimulationDriver ..> StepListener : 每个传播步回调
+TimingMonitor ..> SignalDescriptor : 层级扫描与读取
+TimingMonitor *-- "0..*" SignalSample : histories
+TimingMonitor ..> WaveformAnomalyDetector : 同拍短脉冲判定
+SignalDescriptor --> CircuitState : 按 instancePath 定位状态
+TestReplayService ..> SimulationDriver : 从序列起点重放
+TestReplayService --> DebugController
+TestReplayService --> WaveformModel
+TestReplayService ..> TestResult : 读取失败索引与异常信号
+TestReplayService ..> StepListener : 以波形采集实现监听
+WaveformModel ..> SignalDescriptor : 观测信号
+WaveformModel *-- "0..*" SignalSample : histories
+TestResult ..> SignalDescriptor : anomalySignal
+DebugController ..> SignalDescriptor : scan
+@enduml

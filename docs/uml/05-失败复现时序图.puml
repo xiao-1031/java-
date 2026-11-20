@@ -1,0 +1,46 @@
+@startuml
+title 失败观测点复现——对象协作时序图
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName "Microsoft YaHei"
+autonumber
+
+actor 学生 as user
+participant "AutoTestPanel" as ui
+participant "TestReplayService" as replay
+participant "DebugController" as controller
+participant "Project" as project
+participant "SimulationDriver" as driver
+participant "LearnerTimingAccess" as timing
+participant "StepListener" as listener
+participant "WaveformModel" as waveform
+
+user -> ui : 选择失败观测点并点击复现
+ui -> replay : replay(result, suite)
+replay -> controller : pause()
+replay -> replay : 创建或克隆初始 CircuitState
+replay -> driver : new SimulationDriver(initialState)
+replay -> waveform : reset()、选择测试 Pin 与时序信号、开始记录
+
+loop i = 0 .. result.index
+  opt 当前向量 resetBefore = true
+    replay -> driver : reset()
+    replay -> waveform : capture(state, true)
+  end
+  replay -> driver : applyInputs(inputs, listener)
+  loop 当前向量的每个 tick
+    replay -> waveform : onTick()
+    replay -> driver : tick(1, listener)
+    loop 传播队列尚未稳定
+      driver -> timing : step(state)
+      driver -> listener : afterStep(tick, propagationStep)
+      listener -> waveform : capture(state, false)
+    end
+  end
+end
+
+replay -> project : repaintCanvas()
+replay -> controller : pause()（finally）
+replay --> ui : 异常或问题 Pin 对应 Component
+ui --> user : 展示包含内部寄存器的波形与失败位置
+@enduml

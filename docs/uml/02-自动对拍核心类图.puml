@@ -1,0 +1,120 @@
+@startuml
+!pragma layout smetana
+title 自动随机脚本与差分测试——核心设计类图
+top to bottom direction
+skinparam monochrome true
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+skinparam defaultFontName "Microsoft YaHei"
+skinparam linetype ortho
+hide circle
+
+class TestSuite {
+ -signals: List<TestSignal>
+ -vectors: List<TestVector>
+ -generationDescription: String
+ +getInputs(): List<TestSignal>
+ +getOutputs(): List<TestSignal>
+ +hasExpectedOutputs(): boolean
+}
+class TestVector {
+ -inputs: Map<String, Integer>
+ -expectedOutputs: Map<String, Integer>
+ -ticks: int
+ -resetBefore: boolean
+ +withExpectedOutputs(expected: Map): TestVector
+ +formatInputs(): String
+}
+class TestSignal {
+ -pin: Component
+ -name: String
+ -width: int
+ -input: boolean
+ +scan(circuit: Circuit): List<TestSignal>
+ +read(state: CircuitState): Value
+ +write(state: CircuitState, value: int): void
+ +format(value: Value): String
+}
+class TestSuiteFactory {
+ +automatic(signals, maxCases, ticks, reset, seed): TestSuite
+}
+class TemporalInputGenerator {
+ +generate(inputs, maxCases, ticks, reset, seed): List<TestVector>
+ -mask(width: int, value: int): int
+}
+class CsvTestVectorLoader {
+ +load(file, signals, defaultTicks, defaultReset): TestSuite
+}
+class CsvTestVectorWriter {
+ +write(file: File, suite: TestSuite): void
+}
+
+interface ScriptExecutor {
+ +execute(suite: TestSuite): TestReport
+}
+class TestRunner {
+ -isolatedState: CircuitState
+ +execute(suite: TestSuite): TestReport
+ +run(suite: TestSuite, listener: ProgressListener): TestReport
+ -execute(vector): TestResult
+}
+class CircuitReference {
+ -project: Project
+ -initialState: CircuitState
+ -signals: List<TestSignal>
+ +open(file, requiredSignals): CircuitReference
+ +execute(suite: TestSuite): TestReport
+ +close(): void
+ -validateInterface(required, reference): void
+}
+class DifferentialTestRunner {
+ -deviceUnderTest: ScriptExecutor
+ -referenceModel: ScriptExecutor
+ +execute(suite: TestSuite): TestReport
+ +run(suite: TestSuite, listener: ProgressListener): TestReport
+ -compare(suite, actual, reference): TestResult
+ -findMismatch(suite, actual, expected): String
+}
+class TestReport {
+ -results: List<TestResult>
+ -functional: boolean
+ -generationDescription: String
+ -cancelled: boolean
+ +count(status: Status): int
+}
+class TestResult {
+ -index: int
+ -vector: TestVector
+ -actualOutputs: Map<String, Value>
+ -status: Status
+ -reason: String
+ -problematicSignal: String
+ -anomalySignal: SignalDescriptor
+}
+enum "TestResult.Status" as TestStatus {
+ CLEAN
+ ANOMALY
+ FAILED
+ ERROR
+}
+
+TestSuite *-- "0..*" TestSignal : signals
+TestSuite *-- "0..*" TestVector : vectors
+TestSuiteFactory ..> TemporalInputGenerator : 定向序列 + 固定种子随机序列
+TestSuiteFactory ..> TestSuite : 创建
+CsvTestVectorLoader ..> TestSuite : 反序列化
+CsvTestVectorWriter ..> TestSuite : 序列化
+
+ScriptExecutor <|.. TestRunner
+ScriptExecutor <|.. CircuitReference
+ScriptExecutor <|.. DifferentialTestRunner
+DifferentialTestRunner --> "1" ScriptExecutor : deviceUnderTest
+DifferentialTestRunner --> "1" ScriptExecutor : referenceModel
+CircuitReference ..> TestRunner : 本地 Pin 映射后执行
+TestRunner ..> TestReport : 生成
+DifferentialTestRunner ..> TestReport : 对拍后生成
+TestReport *-- "0..*" TestResult : results
+TestResult --> "1" TestVector : vector
+TestResult --> TestStatus : status
+DifferentialTestRunner ..> TestVector : 以参考输出创建新向量
+@enduml
